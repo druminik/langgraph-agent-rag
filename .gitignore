@@ -1,0 +1,4 @@
+.env
+__pycache__/**
+**/*:Zone.Identifier
+devbox.lock
