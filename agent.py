@@ -41,14 +41,19 @@ llm = AzureChatOpenAI(
 )
 
 # ---- Global "knowledge base" (vector store) ----
-# embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+INDEX_DIR = "./faiss_index"
+
 embeddings = HuggingFaceEmbeddings(
     model_name="BAAI/bge-m3",
     model_kwargs={"device": "cpu"},       # use your RTX
     encode_kwargs={"batch_size": 64},      # tune if you want
 )
 
-vectorstore = FAISS.from_texts(["Initial empty store"], embeddings)
+vectorstore = FAISS.load_local(
+    INDEX_DIR,
+    embeddings,
+    allow_dangerous_deserialization=True,  # required in newer LangChain versions
+)
 retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
 
 text_splitter = RecursiveCharacterTextSplitter(
@@ -60,14 +65,13 @@ text_splitter = RecursiveCharacterTextSplitter(
 # Tooling
 # ----------------------------------------------------------
 
-@tool("load_documents", return_direct=False)
-def load_documents_tool(folder_path: str) -> str:
+@tool("reload_documents", return_direct=False)
+def reload_documents_tool(folder_path: str = "./docs") -> str:
     """
-    Load and index all PDF and Word (docx) files in the given folder path.
-    The content is added to the shared vector store. Use this before retrieval
-    if new documents have been added.
+    Re-index all documents in the folder and overwrite the FAISS index on disk.
     """
     import glob
+
     paths = glob.glob(os.path.join(folder_path, "*.pdf")) + \
             glob.glob(os.path.join(folder_path, "*.docx"))
 
@@ -84,7 +88,6 @@ def load_documents_tool(folder_path: str) -> str:
             continue
         docs.extend(loader.load())
 
-    # Split and add to vectorstore
     all_splits = []
     for d in docs:
         splits = text_splitter.split_documents([d])
@@ -94,23 +97,21 @@ def load_documents_tool(folder_path: str) -> str:
     metadatas = []
     for split in all_splits:
         texts.append(split.page_content)
-
-        # start from loader metadata (usually has "source": full path)
         meta = dict(split.metadata)
-        source_path = meta.get("source", "")
-        # add a clean filename field for convenience
-        if source_path:
-            meta["filename"] = os.path.basename(source_path)
-        else:
-            meta["filename"] = "unknown"
-
+        src = meta.get("source", "")
+        meta["filename"] = os.path.basename(src) if src else "unknown"
         metadatas.append(meta)
 
-    if texts:
-        vectorstore.add_texts(texts, metadatas=metadatas)
-        return f"Loaded and indexed {len(paths)} document(s) with {len(texts)} chunks."
-    else:
+    if not texts:
         return "Documents found but no text extracted."
+
+    global vectorstore, retriever
+    vectorstore = FAISS.from_texts(texts, embedding=embeddings, metadatas=metadatas)
+    vectorstore.save_local(INDEX_DIR)
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
+
+    return f"Rebuilt index from {len(paths)} document(s) with {len(texts)} chunks and saved to {INDEX_DIR}."
+
 
 
 @tool("search_knowledge_base", return_direct=False)
@@ -138,7 +139,7 @@ def retrieval_tool(query: str) -> str:
     return "\n\n".join(out_lines)
 
 
-tools = [load_documents_tool, retrieval_tool]
+tools = [reload_documents_tool, retrieval_tool]
 llm_with_tools = llm.bind_tools(tools)
 
 
@@ -242,14 +243,6 @@ display(Image(graph.get_graph(xray=True).draw_mermaid_png()))
 # ----------------------------------------------------------------------
 
 def main():
-
-    # events = graph.stream(
-    #     {"messages": [HumanMessage(content="Index all documents in ./docs")]},
-    #     config=config
-    # )
-    
-    graph.invoke({"messages": [HumanMessage(content="Index all documents in ./docs")]}, config=config)
-
     while True:
         user_input = input("Enter a prompt (or 'quit' to exit): ")
         if user_input.lower() == 'quit':

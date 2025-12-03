@@ -2,3 +2,5 @@
 __pycache__/**
 **/*:Zone.Identifier
 devbox.lock
+faiss_index/index.faiss
+faiss_index/index.pkl
