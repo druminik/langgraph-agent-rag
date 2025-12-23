@@ -34,10 +34,11 @@ api_key = os.getenv("AZURE_OPENAI_API_KEY")
 # ----------------------------------------------------------
 
 llm = AzureChatOpenAI(
-    temperature=0,
+    max_completion_tokens=6553,
+    reasoning_effort="minimal",
     api_key=api_key,
     api_version="2025-01-01-preview",
-    azure_endpoint="https://switzerlandnorth.api.cognitive.microsoft.com/openai/deployments/gpt-4o-mini/chat/completions?api-version=2025-01-01-preview"
+    azure_endpoint="https://switzerlandnorth.api.cognitive.microsoft.com/openai/deployments/gpt-5-nano/chat/completions?api-version=2025-01-01-preview"
 )
 
 # ---- Global "knowledge base" (vector store) ----
