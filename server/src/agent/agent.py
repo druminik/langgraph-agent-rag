@@ -234,9 +234,8 @@ builder.add_conditional_edges("model", route_after_model, {
 })
 builder.add_edge("tools", "model")  # After tools, go back to model
 
-memory = MemorySaver()
 config = {"configurable": {"thread_id": "approval-123"}}
-graph = builder.compile(checkpointer=memory)
+graph = builder.compile()
 
 
 # Show the agent
